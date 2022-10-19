@@ -1,6 +1,6 @@
 {
   "name": "green-deployer",
-  "version": "10.1.6",
+  "version": "0.1.6",
   "main": "src/index.js",
   "license": "MIT",
   "bin": {
