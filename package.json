@@ -1,6 +1,6 @@
 {
   "name": "green-deployer",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "main": "src/index.js",
   "license": "MIT",
   "bin": {
@@ -12,6 +12,6 @@
     "extract-zip": "^2.0.1"
   },
   "scripts": {
-    "demo": "node ./src/cli.js deploy name 39ce03dc84c0fa8b411207243b91ef1948bc3282"
+    "demo": "node ./src/cli.js deploy name "
   }
 }
