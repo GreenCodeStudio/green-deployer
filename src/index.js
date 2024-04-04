@@ -42,17 +42,17 @@ export async function deploy(name, version) {
 export async function deployZip(name, version, zipPath) {
     let allConfig = (await loadConfig());
     let config = allConfig [name];
-
+    console.log('extracting to  ' + config.path + '/versions/' + version)
     await extractZip(zipPath, {
         dir: config.path + '/versions/' + version,
         defaultDirMode: 0o777,
         defaultFileMode: 0o777
     })
-    let path=config.path;
+    let path = config.path;
     let isWin = process.platform === "win32";
-    console.log('process.platform',process.platform)
-    if(isWin){
-        path='file://'+path
+    console.log('process.platform', process.platform)
+    if (isWin) {
+        path = 'file://' + path
     }
     console.log('extracted to  ' + config.path + '/versions/' + version)
 
@@ -123,7 +123,8 @@ export async function listenQueue(queueUrl, region) {
 
     app.start();
 }
-export async function list(){
+
+export async function list() {
     let allConfig = (await loadConfig());
     console.log(allConfig)
 }
