@@ -4,9 +4,14 @@ import extractZip from "extract-zip";
 import AWS from "aws-sdk";
 import {Consumer} from 'sqs-consumer';
 
-export async function loadConfig() {
+function getConfigPath() {
     let isWin = process.platform === "win32";
     let filePath = isWin ? 'file:///' + process.env.APPDATA + '/green-deployer-conf.js' : 'file:///etc/green-deployer-conf.js';
+    return filePath;
+}
+
+export async function loadConfig() {
+    const filePath = getConfigPath();
     return (await import (filePath)).default;
 }
 
@@ -75,56 +80,42 @@ export async function deployZip(name, version, zipPath) {
     }
 }
 
-export async function listenQueue(queueUrl, region) {
-    AWS.config.update({region});
-
-    // const sqs = new AWS.SQS({apiVersion: '2012-11-05'});
-    // const params = {
-    //     QueueUrl: queueUrl,
-    //     MaxNumberOfMessages: 1,
-    //     VisibilityTimeout: 0,
-    //     WaitTimeSeconds: 0
-    // };
-    // let tmp = sqs.receiveMessage(params, (err, data) => {
-    //     if (err) {
-    //         console.log(err, err.stack);
-    //     } else {
-    //         for (const name of new Set(data.Messages.map(x => x.Body))) {
-    //             if (allConfig[name]) {
-    //                 deploy(name, process.argv[4])
-    //             }
-    //         }
-    //     }
-    // });
-    // console.log({tmp})
-
-
-    const app = Consumer.create({
-        queueUrl,
-        handleMessage: async (message, done) => {
-            console.log(message);
-            console.log(message.Body);
-            try {
-                let allConfig = (await loadConfig());
-                let data = JSON.parse(message.Body);
-                if (allConfig[data.name]) {
-                    await deploy(data.name, data.version)
-                    done();
-                    process.exit()
-                }
-            } catch (ex) {
-            }
-        }
-    });
-
-    app.on('error', (err) => {
-        console.log(err.message);
-    });
-
-    app.start();
-}
 
 export async function list() {
     let allConfig = (await loadConfig());
     console.log(allConfig)
+}
+
+export async function check(deployAfterCheck = false) {
+    let allConfig = (await loadConfig());
+    for (let name in allConfig) {
+        let config = allConfig [name];
+        let latestVersion = await getLatestVersion(name)
+        let installedVersion = null;
+        try {
+            installedVersion = (await fsPromises.readlink(config.path + '/currentVersion')).split('/').pop()
+        } catch (e) {
+            console.warn(e)
+            continue;
+        }
+
+        if (installedVersion === latestVersion) {
+            console.log(name + ' is up to date');
+        } else {
+            console.log(name + ' can be updated from ' + installedVersion + ' to ' + latestVersion);
+            if (deployAfterCheck) {
+                await deploy(name, latestVersion)
+            }
+        }
+    }
+}
+export async function showConfig() {
+    const filePath = getConfigPath();
+    console.log('Config file path: ' + filePath);
+    console.log('');
+    console.log('Config file content:');
+    const data = await fsPromises.readFile(filePath.replace('file://', ''));
+    console.log(data.toString());
+    console.log('Config file executed:')
+    console.log(await loadConfig());
 }
