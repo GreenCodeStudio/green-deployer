@@ -1,6 +1,6 @@
 {
   "name": "green-deployer",
-  "version": "0.1.32",
+  "version": "0.1.33",
   "main": "src/index.js",
   "license": "MIT",
   "bin": {
@@ -15,7 +15,8 @@
     "sqs-consumer": "^5.7.0"
   },
   "scripts": {
-    "demo": "node ./src/cli.js deploy name ",
+    "demo": "node ./src/cli.js deploy name",
+    "demoConfig": "node ./src/cli.js config",
     "demoCheck": "node ./src/cli.js check"
   }
 }
