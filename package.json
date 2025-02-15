@@ -1,8 +1,9 @@
 {
   "name": "green-deployer",
-  "version": "0.1.42",
+  "version": "0.1.43",
   "main": "src/index.js",
   "license": "MIT",
+  "repository": "https://github.com/GreenCodeStudio/green-deployer",
   "bin": {
     "green-deployer": "src/cli.js"
   },
