@@ -14,6 +14,7 @@ if (process.argv[2] == 'deploy') {
     await check(false)
 } else if (process.argv[2] == 'checkAndDeploy') {
     await check(true)
+    await clearAll(30,7)
 } else if (process.argv[2] == 'config') {
     if (process.argv[3] == 'example') {
         showExampleConfig()

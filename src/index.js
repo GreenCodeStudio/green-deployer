@@ -207,6 +207,7 @@ export async function clearByConfig(config, daysToKeep, versionsToKeep) {
     const toDelete = oldVersions.slice(versionsToKeep).filter(x => x.daysOld >= daysToKeep);
     for (let x of toDelete) {
         console.log('Deleting ', x);
+        await fsPromises.rm(x.path, {recursive: true});
     }
 }
 
