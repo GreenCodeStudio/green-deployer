@@ -1,8 +1,7 @@
 import {GetObjectCommand, S3Client} from "@aws-sdk/client-s3";
 import {createWriteStream, promises as fsPromises, existsSync} from 'fs';
 import extractZip from "extract-zip";
-import AWS from "aws-sdk";
-import {Consumer} from 'sqs-consumer';
+import readline from "node:readline";
 
 function getConfigPath() {
     let isWin = process.platform === "win32";
@@ -10,7 +9,14 @@ function getConfigPath() {
     return filePath;
 }
 
+function getConfigPathClean() {
+    let isWin = process.platform === "win32";
+    let filePath = isWin ? process.env.APPDATA + '/green-deployer-conf.js' : '/etc/green-deployer-conf.js';
+    return filePath;
+}
+
 export async function loadConfig() {
+    await checkConfigExisting();
     const filePath = getConfigPath();
     return (await import (filePath)).default;
 }
@@ -47,9 +53,10 @@ export async function deploy(name, version) {
 export async function deployZip(name, version, zipPath) {
     let allConfig = (await loadConfig());
     let config = allConfig [name];
-    console.log('extracting to  ' + config.path + '/versions/' + version)
+    const sufix = +new Date();
+    console.log('extracting to  ' + config.path + '/versions/' + version + '_' + sufix)
     await extractZip(zipPath, {
-        dir: config.path + '/versions/' + version,
+        dir: config.path + '/versions/' + version + '_' + sufix,
         defaultDirMode: 0o777,
         defaultFileMode: 0o777
     })
@@ -59,22 +66,22 @@ export async function deployZip(name, version, zipPath) {
     if (isWin) {
         path = 'file://' + path
     }
-    console.log('extracted to  ' + config.path + '/versions/' + version)
+    console.log('extracted to  ' + config.path + '/versions/' + version + '_' + sufix)
 
     let versionScripts = null
     try {
-        versionScripts = await import(path + '/versions/' + version + '/deployment.js')
+        versionScripts = await import(path + '/versions/' + version + '_' + sufix + '/deployment.js')
 
-        versionScripts?.afterUnzip?.call(null, config.path + '/versions/' + version);
+        versionScripts?.afterUnzip?.call(null, config.path + '/versions/' + version + '_' + sufix);
     } catch (ex) {
         console.warn('after unzip', ex)
     }
     await fsPromises.unlink(config.path + '/currentVersion').catch(() => false);
 
 
-    await fsPromises.symlink('./versions/' + version, config.path + '/currentVersion', 'dir')
+    await fsPromises.symlink('./versions/' + version + '_' + sufix, config.path + '/currentVersion', 'dir')
     try {
-        versionScripts?.afterInstall?.call(null, config.path + '/versions/' + version);
+        versionScripts?.afterInstall?.call(null, config.path + '/versions/' + version + '_' + sufix);
     } catch (ex) {
         console.warn('after afterInstall', ex)
     }
@@ -93,7 +100,7 @@ export async function check(deployAfterCheck = false) {
         let latestVersion = await getLatestVersion(name)
         let installedVersion = null;
         try {
-            installedVersion = (await fsPromises.readlink(config.path + '/currentVersion')).split('/').pop()
+            installedVersion = (await fsPromises.readlink(config.path + '/currentVersion')).split('/').pop().split('_').shift();
         } catch (e) {
             console.warn(e)
             continue;
@@ -109,13 +116,103 @@ export async function check(deployAfterCheck = false) {
         }
     }
 }
+
+async function checkConfigExisting() {
+    const filePath = getConfigPathClean();
+    const exists = existsSync(filePath);
+    if (exists) {
+        return true
+    } else {
+        console.log('Config file not found. ');
+        const rl = readline.createInterface({
+            input: process.stdin,
+            output: process.stdout
+        });
+        const answer = await new Promise(r => rl.question('Want to create one? [Yn]', r));
+        if (answer.toLowerCase() === 'n') {
+            return false;
+        }
+        const fileContent = `
+module.exports= {
+    /*"projectname":{
+        "path":"/var/www/demo",
+        "source":{
+            "type":"s3",
+            "bucket":"bucketname",
+            "key":x=>\`projectname/\${x}.zip\`,
+            "lastVersionKey":"projectname/lastVersion"
+        }
+    }*/
+}
+`
+        await fsPromises.writeFile(filePath.replace('file:///', ''), fileContent);
+        return true;
+    }
+}
+
 export async function showConfig() {
-    const filePath = getConfigPath();
+    const filePath = getConfigPathClean();
     console.log('Config file path: ' + filePath);
     console.log('');
-    console.log('Config file content:');
-    const data = await fsPromises.readFile(filePath.replace('file://', ''));
-    console.log(data.toString());
-    console.log('Config file executed:')
-    console.log(await loadConfig());
+    const exists = await checkConfigExisting();
+    if (exists) {
+        console.log('Config file content:');
+        const data = await fsPromises.readFile(filePath);
+        console.log(data.toString());
+        console.log('Config file executed:')
+        console.log(await loadConfig());
+    } else {
+        console.log('Config file not found. ');
+    }
+
+}
+
+export function showExampleConfig() {
+    console.log(`
+module.exports= {
+    "projectname":{
+        "path":"/var/www/demo",
+        "source":{
+            "type":"s3",
+            "bucket":"bucketname",
+            "key":x=>\`projectname/\${x}.zip\`,
+            "lastVersionKey":"projectname/lastVersion"
+        }
+    }
+}
+`);
+}
+
+export async function clear(name, daysToKeep, versionsToKeep) {
+    let allConfig = (await loadConfig());
+    await clearByConfig(allConfig[name], daysToKeep, versionsToKeep);
+}
+
+export async function clearByConfig(config, daysToKeep, versionsToKeep) {
+
+    let installedVersion = null;
+    try {
+        installedVersion = (await fsPromises.readlink(config.path + '/currentVersion')).split(/[\/\\]/).pop();
+    } catch (e) {
+        console.warn(e)
+        return;
+    }
+    console.log({installedVersion})
+    const oldVersions = await Promise.all((await fsPromises.readdir(config.path + '/versions/')).filter(x => x != '.' && x != '..' && x != installedVersion).map(async version => {
+        const path = config.path + '/versions/' + version;
+        const stat = (await fsPromises.stat(path));
+        return {version, path, daysOld: (new Date() - stat.ctimeMs) / 1000 / 3600 / 24}
+    }));
+    oldVersions.sort((a, b) => a.daysOld - b.daysOld);
+    const toDelete = oldVersions.slice(versionsToKeep).filter(x => x.daysOld >= daysToKeep);
+    for (let x of toDelete) {
+        console.log('Deleting ', x);
+    }
+}
+
+export async function clearAll(daysToKeep, versionsToKeep) {
+    let allConfig = (await loadConfig());
+    for (let name in allConfig) {
+        await clearByConfig(allConfig[name], daysToKeep, versionsToKeep)
+    }
 }
