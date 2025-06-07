@@ -2,6 +2,7 @@ import {GetObjectCommand, S3Client} from "@aws-sdk/client-s3";
 import {createWriteStream, promises as fsPromises, existsSync} from 'fs';
 import extractZip from "extract-zip";
 import readline from "node:readline";
+import express from "express";
 
 function getConfigPath() {
     let isWin = process.platform === "win32";
@@ -179,6 +180,14 @@ module.exports= {
             "lastVersionKey":"projectname/lastVersion"
         }
     }
+    "projectname2":{
+    "path":"/var/www/demo",
+    "source":{
+        "type":"listeningApi",
+        "port":9999,
+        "project_name":"projectname",
+        "secret":"secret",
+    }
 }
 `);
 }
@@ -215,5 +224,41 @@ export async function clearAll(daysToKeep, versionsToKeep) {
     let allConfig = (await loadConfig());
     for (let name in allConfig) {
         await clearByConfig(allConfig[name], daysToKeep, versionsToKeep)
+    }
+}
+
+export async function backgroundProcess() {
+
+    let isWin = process.platform === "win32";
+    let allConfig = (await loadConfig());
+    let ports = new Set(Object.values(allConfig).filter(x => x.source.type === 'listeningApi').map(x => x.source.port));
+    if (ports.size > 0) {
+        const api = express();
+
+        api.use((err, req, res, next) => {
+            console.error(err.stack); // Logowanie błędu na serwerze
+            res.status(500).json({ message: 'Error occured'});
+        });
+
+        for (const projectConfig of Object.values(allConfig).filter(x => x.source.type === 'listeningApi')) {
+            console.log('/' + projectConfig.source.project_name + '/deploy');
+            api.post('/' + projectConfig.source.project_name + '/deploy', async (req, res) => {
+                if (req.headers.authorization?.length > 0 && req.headers.authorization == projectConfig.source.secret) {
+                    let tmpPath = (isWin ? process.env.TEMP + '/' : '/tmp/') + 'green-deployer-' + Math.random() + '.zip';
+                    const version = req.query.version || 'unknown';
+                    const file = await createWriteStream(tmpPath);
+                    req.pipe(file);
+                    await new Promise(r => file.on('finish', r));
+                    await deployZip(projectConfig.source.project_name, version, tmpPath);
+                    res.send('OK');
+                } else {
+                    res.status(403).send('Unauthorized');
+                }
+            });
+        }
+
+        for (let port of ports) {
+            api.listen(port);
+        }
     }
 }

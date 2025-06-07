@@ -1,6 +1,16 @@
 #!/usr/bin/env node
 
-import {deploy, deployZip, list, check, showConfig, showExampleConfig, clearAll, clear} from "./index.js";
+import {
+    deploy,
+    deployZip,
+    list,
+    check,
+    showConfig,
+    showExampleConfig,
+    clearAll,
+    clear,
+    backgroundProcess
+} from "./index.js";
 
 console.log(process.argv)
 
@@ -25,6 +35,9 @@ if (process.argv[2] == 'deploy') {
     await clear(process.argv[3], +(process.argv[4] ?? 0), +(process.argv[5] ?? 0))
 } else if (process.argv[2] == 'clearAll') {
     await clearAll(+(process.argv[3] ?? 0), +(process.argv[4] ?? 0))
-} else {
-    console.log('Green deploy \r\n\r\ndeploy list - shows config\r\ndeploy [name] [version] - deploys\r\ncheck - check if newest version is deployed\r\ncheckAndDeploy - check and deploy if needed, automatically deletes versions older than 2 or 30 days\r\nconfig - shows config file\r\nclear [name] [daysToKeep] [versionsToKeep]\r\nclearAll [daysToKeep] [versionsToKeep]')
+
+} else if (process.argv[2] == 'background') {
+    await backgroundProcess();
+}else {
+    console.log('Green deploy \r\n\r\ndeploy list - shows config\r\ndeploy [name] [version] - deploys\r\ncheck - check if newest version is deployed\r\ncheckAndDeploy - check and deploy if needed, automatically deletes versions older than 2 or 30 days\r\nconfig - shows config file\r\nclear [name] [daysToKeep] [versionsToKeep]\r\nclearAll [daysToKeep] [versionsToKeep]\r\nbackground - start a background process to enable api deployment, recommended to run by systemctl')
 }
