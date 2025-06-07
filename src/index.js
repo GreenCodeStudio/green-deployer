@@ -55,9 +55,13 @@ export async function deployZip(name, version, zipPath) {
     let allConfig = (await loadConfig());
     let config = allConfig [name];
     const sufix = +new Date();
-    console.log('extracting to  ' + config.path + '/versions/' + version + '_' + sufix)
+    const dir = config.path + '/versions/' + version + '_' + sufix;
+    console.log('extracting to  ' + dir)
+    if (config.keepOldFiles) {
+        await keepOldFiles(config.path + '/currentVersion', dir, config.keepOldFiles);
+    }
     await extractZip(zipPath, {
-        dir: config.path + '/versions/' + version + '_' + sufix,
+        dir,
         defaultDirMode: 0o777,
         defaultFileMode: 0o777
     })
@@ -67,7 +71,7 @@ export async function deployZip(name, version, zipPath) {
     if (isWin) {
         path = 'file://' + path
     }
-    console.log('extracted to  ' + config.path + '/versions/' + version + '_' + sufix)
+    console.log('extracted to  ' + dir)
 
     let versionScripts = null
     try {
@@ -237,7 +241,7 @@ export async function backgroundProcess() {
 
         api.use((err, req, res, next) => {
             console.error(err.stack); // Logowanie błędu na serwerze
-            res.status(500).json({ message: 'Error occured'});
+            res.status(500).json({message: 'Error occured'});
         });
 
         for (const projectConfig of Object.values(allConfig).filter(x => x.source.type === 'listeningApi')) {
@@ -260,5 +264,31 @@ export async function backgroundProcess() {
         for (let port of ports) {
             api.listen(port);
         }
+    }
+}
+
+async function keepOldFiles(source, target, callback, currentPath = '/') {
+    const filesInSource = await fsPromises.readdir(source + currentPath);
+    for (const file of filesInSource) {
+        const sourceFilePath = source + currentPath + file;
+        const targetFilePath = target + currentPath + file;
+        const stat = await fsPromises.stat(sourceFilePath);
+        const params = {
+            source: sourceFilePath,
+            target: targetFilePath,
+            fileName: file,
+            relativePath: currentPath + file,
+            stat
+        }
+        const promises = [];
+        if (stat.isFile()) {
+            if (callback(params)) {
+                promises.push(fsPromises.cp(sourceFilePath, targetFilePath));
+            }
+        } else if (stat.isDirectory()) {
+            promises.push(keepOldFiles(source, target, callback, currentPath + file + '/'));
+        }
+
+        await Promise.all(promises);
     }
 }
